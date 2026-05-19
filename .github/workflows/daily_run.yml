@@ -38,8 +38,14 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Robot"
+          
+          # 💡 核心改良：强制清理掉仓库里所有旧的 Excel 文件记录，只保留最新生成的这一个
+          git rm -f 内存价格每日追踪_*.xlsx || echo "没有旧文件需要清理"
+          
+          # 把今天新鲜出炉的 Excel 加进来
           git add *.xlsx
-          git commit -m "🤖 自动更新：今日内存价格已抓取" || echo "没有文件变化"
+          
+          git commit -m "🤖 自动更新：今日内存价格已抓取并清理历史旧文件" || echo "没有文件变化"
           git push
 
       # 🎯 核心装配：调用官方邮件插件，自动发送附件到你的邮箱
