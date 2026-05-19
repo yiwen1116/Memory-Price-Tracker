@@ -2,42 +2,68 @@ name: 自动更新 TrendForce 内存价格
 
 on:
   schedule:
-    # 这里的按 UTC 时间算。北京时间 18:30 = UTC 时间 10:30。
-    # 意思是每天 UTC 10:30 (北京 18:30) 准时执行
+    # 北京时间 18:30 = UTC 时间 10:30
     - cron: '30 10 * * *'
-  # 加上这个，你可以在网页上手动点按钮测试，不用傻等
   workflow_dispatch: 
 
 jobs:
   update-excel:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 给机器人修改并保存 Excel 的权限
+      contents: write
 
     steps:
-      # 1. 把仓库里的代码和 Excel 拉到这台云端电脑上
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # 2. 给云端电脑装上 Python
       - name: 配置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # 3. 按照购物清单安装依赖包
       - name: 安装 Python 库
         run: pip install -r requirements.txt
 
-      # 4. 执行你的终极脚本！
       - name: 运行爬虫脚本
         run: python run.py
 
-      # 5. 把更新好的、改了名字的新 Excel 保存回你的 GitHub 仓库
-      - name: 保存并提交最新的 Excel
+      # 💡 核心改动：动态获取今天刚刚改名后的 Excel 文件名，传给下一步发邮件
+      - name: 检测今日生成的最新文件名
+        id: get_file
+        run: |
+          FILENAME=$(ls 内存价格每日追踪_*.xlsx | head -n 1)
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+      - name: 保存并提交最新的 Excel 到仓库
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Robot"
           git add *.xlsx
-          git commit -m "🤖 自动更新：今日内存价格已抓取" || echo "今天的数据没有变化，无需提交"
+          git commit -m "🤖 自动更新：今日内存价格已抓取" || echo "没有文件变化"
           git push
+
+      # 🎯 核心装配：调用官方邮件插件，自动发送附件到你的邮箱
+      - name: 发送每日价格追踪邮件
+        uses: dawidd6/action-send-mail@v3
+        with:
+          # 1. 寄件人邮箱设置（这里以 QQ 邮箱为例，如果是163邮箱就把 smtp.qq.com 改成 smtp.163.com）
+          server_address: smtp.qq.com
+          server_port: 465
+          username: 1343751957@qq.com # 👈 换成你自己的发件邮箱
+          # 从 GitHub 保险箱里自动读取刚才存的授权码
+          password: ${{ secrets.MAIL_PASSWORD }}
+          
+          # 2. 收件信息设置
+          subject: 📊 今日内存价格追踪日报 (${{ steps.get_file.outputs.filename }})
+          to: 1343751957@qq.com # 👈 换成你接收邮件的邮箱（可以和发件箱是同一个）
+          from: GitHub Action Robot
+          
+          # 3. 邮件正文
+          body: |
+            您好！
+            
+            今天的 TrendForce 内存价格（DRAM / NAND Flash）数据已由云端机器人自动抓取完成。          
+            最新的 Excel 报表已作为附件发送，请查收！
+            
+          # 4. 强力附件：把今天刚改好名字的 Excel 自动装进邮件里
+          attachments: ${{ steps.get_file.outputs.filename }}
