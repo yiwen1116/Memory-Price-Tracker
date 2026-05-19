@@ -48,11 +48,11 @@ jobs:
         with:
           server_address: smtp.qq.com
           server_port: 465
-          username: 13437XXXX@qq.com # 👈 换成你的发件 QQ 邮箱
+          username: 1343751957@qq.com # 👈 换成你的发件 QQ 邮箱
           password: ${{ secrets.MAIL_PASSWORD }}
           
           subject: 📊 今日内存价格追踪日报 (含历史趋势)
-          to: 13437XXXX@qq.com # 👈 换成你的接收邮箱
+          to: 1343751957@qq.com # 👈 换成你的接收邮箱
           from: GitHub Action Robot
           
           body: |
