@@ -1,0 +1,43 @@
+name: 自动更新 TrendForce 内存价格
+
+on:
+  schedule:
+    # 这里的按 UTC 时间算。北京时间 18:30 = UTC 时间 10:30。
+    # 意思是每天 UTC 10:30 (北京 18:30) 准时执行
+    - cron: '30 10 * * *'
+  # 加上这个，你可以在网页上手动点按钮测试，不用傻等
+  workflow_dispatch: 
+
+jobs:
+  update-excel:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 给机器人修改并保存 Excel 的权限
+
+    steps:
+      # 1. 把仓库里的代码和 Excel 拉到这台云端电脑上
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # 2. 给云端电脑装上 Python
+      - name: 配置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 3. 按照购物清单安装依赖包
+      - name: 安装 Python 库
+        run: pip install -r requirements.txt
+
+      # 4. 执行你的终极脚本！
+      - name: 运行爬虫脚本
+        run: python run.py
+
+      # 5. 把更新好的、改了名字的新 Excel 保存回你的 GitHub 仓库
+      - name: 保存并提交最新的 Excel
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Robot"
+          git add *.xlsx
+          git commit -m "🤖 自动更新：今日内存价格已抓取" || echo "今天的数据没有变化，无需提交"
+          git push
