@@ -8,9 +8,7 @@ from datetime import datetime
 import openpyxl
 
 # =======================================================
-# 🎯 配置区：请确认你的 Excel 所在的【文件夹路径】（不要带文件名！）
-# 例如放在 D 盘根目录就是 r"D:\"，放在某个文件夹就是 r"D:\内存数据\"
-FOLDER_DIR = r"D:\TrendForce_Data"
+FOLDER_DIR = "."
 
 
 # =======================================================
@@ -195,8 +193,6 @@ def main():
         print(f"💡 解决办法：请关闭正在打开的 Excel 表格，然后再试一次！")
     except Exception as e:
         print(f"❌ 运行出错了: {e}")
-
-    input("按回车键退出程序...")
 
 
 if __name__ == "__main__":
