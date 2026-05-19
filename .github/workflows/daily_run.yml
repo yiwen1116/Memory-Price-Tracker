@@ -1,16 +1,14 @@
-name: 自动更新 TrendForce 内存价格
+name: 自动更新 TrendForce 内存价格 (Public 历史累积版)
 
 on:
   schedule:
-    # 北京时间 18:30 = UTC 时间 10:30
-    - cron: '25 10 * * *'
+    # 北京时间早上 08:40 = UTC 时间 00:40
+    - cron: '40 0 * * *'
   workflow_dispatch: 
 
 jobs:
   update-excel:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: 检出代码
@@ -24,52 +22,51 @@ jobs:
       - name: 安装 Python 库
         run: pip install -r requirements.txt
 
-      - name: 运行爬虫脚本
+      # 📥 第一步：尝试从 GitHub 内部网盘下载昨天保存的历史 Excel 备份
+      - name: 下载昨天的历史 Excel 备份
+        uses: actions/download-artifact@v4
+        with:
+          name: memory-price-database
+          path: .
+        continue-on-error: true # 第一次运行时如果没有备份，容许它报错并继续
+
+      # ⚙️ 第二步：运行 Python 追加今天的新数据
+      - name: 运行爬虫脚本并追加数据
         run: python run.py
 
-      # 💡 核心改动：动态获取今天刚刚改名后的 Excel 文件名，传给下一步发邮件
-      - name: 检测今日生成的最新文件名
+      # 🔍 第三步：锁定刚刚更新完的最新文件名
+      - name: 检测今日最新的 excel 文件
         id: get_file
         run: |
-          FILENAME=$(ls 内存价格每日追踪_*.xlsx | head -n 1)
+          FILENAME=$(find . -maxdepth 1 -name "*.xlsx" | sed 's|./||' | head -n 1)
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "🔍 成功锁定包含历史数据的附件: $FILENAME"
 
-      - name: 保存并提交最新的 Excel 到仓库
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action Robot"
-          
-          # 💡 核心改良：强制清理掉仓库里所有旧的 Excel 文件记录，只保留最新生成的这一个
-          git rm -f 内存价格每日追踪_*.xlsx || echo "没有旧文件需要清理"
-          
-          # 把今天新鲜出炉的 Excel 加进来
-          git add *.xlsx
-          
-          git commit -m "🤖 自动更新：今日内存价格已抓取并清理历史旧文件" || echo "没有文件变化"
-          git push
-
-      # 🎯 核心装配：调用官方邮件插件，自动发送附件到你的邮箱
+      # 🎯 第四步：发送带完整历史累计数据的邮件给你
       - name: 发送每日价格追踪邮件
         uses: dawidd6/action-send-mail@v3
         with:
-          # 1. 寄件人邮箱设置（这里以 QQ 邮箱为例，如果是163邮箱就把 smtp.qq.com 改成 smtp.163.com）
           server_address: smtp.qq.com
           server_port: 465
-          username: 1343751957@qq.com # 👈 换成你自己的发件邮箱
-          # 从 GitHub 保险箱里自动读取刚才存的授权码
+          username: 13437XXXX@qq.com # 👈 换成你的发件 QQ 邮箱
           password: ${{ secrets.MAIL_PASSWORD }}
           
-          # 2. 收件信息设置
-          subject: 📊 今日内存价格追踪日报 (${{ steps.get_file.outputs.filename }})
-          to: 1343751957@qq.com # 👈 换成你接收邮件的邮箱（可以和发件箱是同一个）
+          subject: 📊 今日内存价格追踪日报 (含历史趋势)
+          to: 13437XXXX@qq.com # 👈 换成你的接收邮箱
           from: GitHub Action Robot
           
-          # 3. 邮件正文
           body: |
             您好！
             
-            今天的 TrendForce 内存价格（DRAM / NAND Flash）数据已由云端机器人自动抓取完成。          
-            最新的 Excel 报表已作为附件发送，请查收！
+            今日内存价格数据已成功抓取，并已完美追加到历史数据库中。
+            最新的完整历史趋势 Excel 报表已作为附件发送，请查收！
             
-          # 4. 强力附件：把今天刚改好名字的 Excel 自动装进邮件里
           attachments: ${{ steps.get_file.outputs.filename }}
+
+      # 📤 第五步：把今天更新完的、包含所有历史数据的最新 Excel 重新打包存入私人安全网盘，供明天使用
+      - name: 上传最新的历史 Excel 备份到安全网盘
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-price-database
+          path: "*.xlsx"
+          retention-days: 7 # 备份保留7天，天天轮转，绝对够用
