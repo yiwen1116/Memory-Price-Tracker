@@ -1,21 +1,15 @@
-name: 自动更新 TrendForce 内存价格
+name: 自动更新 TrendForce 内存价格 (企业微信秒推版)
 
 on:
   schedule:
-    # 🔔 闹钟 1：北京时间 15:30 (UTC 07:30)
-    # 专门对付严重大堵车。哪怕今天排队堵了 3 个小时，也能赶在 18:30 左右帮你跑完！
-    - cron: '30 7 * * *'
-
+    # 🔔 多重闹钟轰炸，确保今天的数据百分之百落袋
+    - cron: '30 6 * * *'  # 北京时间 15:30
+    - cron: '30 7 * * *'  # 北京时间 15:30
     - cron: '30 8 * * *'
-
     - cron: '30 9 * * *'
-    
-    # 🔔 闹钟 2：北京时间 18:15 (UTC 10:15)
-    # 黄金无人区时间！此时全网不堵车，如果刚好赶上 TrendForce 18:10 更新，可以秒级抓取最新价格。
-    - cron: '15 10 * * *'
+    - cron: '15 10 * * *' # 北京时间 18:15
+    - cron: '0 13 * * *'  # 北京时间 21:00
 
-
-  # 允许你随时随地在网页上下拉手动点击按钮触发
   workflow_dispatch: 
 
 jobs:
@@ -23,69 +17,59 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉取仓库中的核心脚本代码
+      # 1. 拉取代码
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # 2. 配置标准的 Python 3.10 运行环境
+      # 2. 配置 Python
       - name: 配置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # 3. 自动安装所需的 Python 依赖库
+      # 3. 安装依赖
       - name: 安装 Python 库
         run: pip install -r requirements.txt
 
-      # 4. 📥 跨天/跨运行接力：尝试从 GitHub 内部私人网盘下载上一次保存的 Excel 总表
+      # 4. 📥 从网盘下载上一次保存的 Excel 总表
       - name: 下载历史 Excel 备份
         uses: actions/download-artifact@v4
         with:
           name: memory-price-database
           path: .
-        continue-on-error: true # 如果是全新开始或改动代码导致断代，允许忽略报错，直接使用你手动上传到网页首页的 Excel 火种
+        continue-on-error: true
 
       # 5. ⚙️ 运行你的核心 Python 爬虫脚本
       - name: 运行爬虫脚本并追加数据
         run: python run.py
 
-      # 6. 🔍 雷达扫描：在隐秘文件夹中揪出刚刚更新完的那张最新的 .xlsx 文件名
-      - name: 检测今日最新的 excel 文件
-        id: get_file
+      # 6. 🚀 【核心派送】通过企业微信官方标准接口，直接把 Excel 实体砸进你的手机
+      - name: 推送 Excel 文件到企业微信
         run: |
-          FILENAME=$(find . -maxdepth 1 -name "*.xlsx" | sed 's|./||' | head -n 1)
-          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-          echo "🔍 成功锁定包含完整历史数据的最新附件: $FILENAME"
-
-      # 7. 🎯 邮件投递：切换至微软 Outlook 官方绿色通道
-      - name: 发送每日价格追踪邮件
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.office365.com # 🌐 切换为 Outlook 的 SMTP 服务器
-          server_port: 587                  # 🌐 Outlook 标准端口 587
-          secure: false                     # 🌐 587 端口需要配合下面的 STARTTLS，所以这里填 false
-          # ⚠️ 请把下面的发件人邮箱改成你自己的 Outlook 邮箱地址！
-          username: JiYiwen1116@outlook.com      
-          password: ${{ secrets.MAIL_PASSWORD }} # 依然安全地读取你刚刚填入的应用密码
+          # 🔍 定位刚刚生成的、包含完整历史数据的最新 Excel 路径
+          FILE_PATH=$(find . -maxdepth 1 -name "*.xlsx" | head -n 1)
+          echo "📂 正在打包发送最新文件: $FILE_PATH"
           
-          subject: 📊 今日内存价格追踪日报 (Outlook 版)
-          to: 134371957@qq.com              # 📥 接收邮箱（依然可以发给你的 QQ 邮箱）
-          # ⚠️ 这里的 from 必须和上面的 username 账号一模一样，否则微软会拦截
-          from: JiYiwen1116@outlook.com          
+          # 1️⃣ 将本地 Excel 文件上传到企业微信服务器，获取临时媒体文件 media_id
+          UPLOAD_RESULT=$(curl -s -F media=@"$FILE_PATH" "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key=${{ secrets.WECHAT_ROBOT_KEY }}&type=file")
+          MEDIA_ID=$(echo $UPLOAD_RESULT | jq -r '.media_id')
           
-          body: |
-            您好！
-            
-            今日的 TrendForce 内存价格数据已通过微软 Outlook 内网绿色通道安全投递。
-            
-            包含完整历史大趋势的最新 Excel 报表已作为附件发送，请查收！
-            
-          attachments: ${{ steps.get_file.outputs.filename }}
+          if [ "$MEDIA_ID" = "null" ] || [ -z "$MEDIA_ID" ]; then
+            echo "❌ 文件上传到微信服务器失败，返回日志: $UPLOAD_RESULT"
+            exit 1
+          fi
+          
+          # 2️⃣ 调用群机器人，把这个 media_id 对应的实体文件推送到你的手机企业微信聊天框
+          SEND_RESULT=$(curl -s -H "Content-Type: application/json" -X POST \
+            -d "{\"msgtype\": \"file\", \"file\": {\"media_id\": \"$MEDIA_ID\"}}" \
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_ROBOT_KEY }}")
+          
+          echo "🎯 微信接口返回状态: $SEND_RESULT"
 
-      # 8. 📤 闭环保存：把刚刚追加完最新数据的 Excel 重新打包，塞回私人安全网盘，供下一次运行（或明天）使用
+      # 7. 📤 闭环保存：把更新后的 Excel 重新塞回网盘，供明天定时任务使用
       - name: 上传最新的历史 Excel 备份到安全网盘
         uses: actions/upload-artifact@v4
         with:
           name: memory-price-database
           path: "*.xlsx"
-          retention-days: 7 # 备份在网盘里保留7天，天天轮转，滚动覆盖，永远处于最新鲜的接力状态
+          retention-days: 7
