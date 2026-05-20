@@ -79,7 +79,7 @@ jobs:
             包含完整历史大趋势的最新 Excel 报表已作为附件发送，请查收！
             
           attachments: ${{ steps.get_file.outputs.filename }}
-          continue-on-error: true
+        continue-on-error: true
 
       # 8. 📤 闭环保存：把刚刚追加完最新数据的 Excel 重新打包，塞回私人安全网盘，供下一次运行（或明天）使用
       - name: 上传最新的历史 Excel 备份到安全网盘
