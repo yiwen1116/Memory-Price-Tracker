@@ -1,4 +1,4 @@
-name: 自动更新 TrendForce 内存价格 (多重轰炸双保险版)
+name: 自动更新 TrendForce 内存价格
 
 on:
   schedule:
@@ -57,29 +57,30 @@ jobs:
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           echo "🔍 成功锁定包含完整历史数据的最新附件: $FILENAME"
 
-      # 7. 🎯 邮件投递：通过 QQ 邮箱安全通道，把带完整历史累计趋势的 Excel 寄给你
-      # ⚠️ 密码依然安全地锁在你的 Secrets 保险箱里，网页公开也绝不泄露！
+      # 7. 🎯 邮件投递：切换至微软 Outlook 官方绿色通道
       - name: 发送每日价格追踪邮件
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.qq.com
-          server_port: 465
-          username: 134371957@qq.com # 你的发件邮箱
-          password: ${{ secrets.MAIL_PASSWORD }}
+          server_address: smtp.office365.com # 🌐 切换为 Outlook 的 SMTP 服务器
+          server_port: 587                  # 🌐 Outlook 标准端口 587
+          secure: false                     # 🌐 587 端口需要配合下面的 STARTTLS，所以这里填 false
+          # ⚠️ 请把下面的发件人邮箱改成你自己的 Outlook 邮箱地址！
+          username: JiYiwen1116@outlook.com      
+          password: ${{ secrets.MAIL_PASSWORD }} # 依然安全地读取你刚刚填入的应用密码
           
-          subject: 📊 今日内存价格追踪日报 (多重定时版)
-          to: 134371957@qq.com # 你的接收邮箱
-          from: GitHub Action Robot
+          subject: 📊 今日内存价格追踪日报 (Outlook 版)
+          to: 134371957@qq.com              # 📥 接收邮箱（依然可以发给你的 QQ 邮箱）
+          # ⚠️ 这里的 from 必须和上面的 username 账号一模一样，否则微软会拦截
+          from: JiYiwen1116@outlook.com          
           
           body: |
             您好！
             
-            今日的 TrendForce 内存价格数据已自动抓取，并已完美追加到历史趋势总表的最后一行。
+            今日的 TrendForce 内存价格数据已通过微软 Outlook 内网绿色通道安全投递。
             
             包含完整历史大趋势的最新 Excel 报表已作为附件发送，请查收！
             
           attachments: ${{ steps.get_file.outputs.filename }}
-        continue-on-error: true
 
       # 8. 📤 闭环保存：把刚刚追加完最新数据的 Excel 重新打包，塞回私人安全网盘，供下一次运行（或明天）使用
       - name: 上传最新的历史 Excel 备份到安全网盘
