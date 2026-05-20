@@ -3,7 +3,7 @@ name: 自动更新 TrendForce 内存价格 (Public 历史累积版)
 on:
   schedule:
     # 北京时间早上 08:40 = UTC 时间 00:40
-    - cron: '40 0 * * *'
+    - cron: '37 1 * * *'
   workflow_dispatch: 
 
 jobs:
