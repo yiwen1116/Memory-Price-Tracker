@@ -9,8 +9,6 @@ import openpyxl
 
 # =======================================================
 FOLDER_DIR = "."
-
-
 # =======================================================
 
 def get_web_data_and_date(url):
@@ -86,8 +84,40 @@ def get_row_data_dict(tables_list, df_history):
 
 
 def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
+    """
+    更正后的核心写入逻辑：
+    1. 【同一天跑多次】：如果真实系统今天这一行已存在，直接原位更新，最新一次覆盖。
+    2. 【网页未更新】：如果网站抓出的日期与 Excel 里的最后一行日期相同，则绝对不添加新行，静默退出！
+    """
     target_row = None
+    system_today_str = datetime.now().strftime("%Y-%m-%d")
 
+    # 1. 🔍 获取当前 Excel 里的最后一行日期，用来和网页做对比
+    last_row_idx = ws.max_row
+    last_row_date_str = None
+    
+    # 寻找最后一行的日期所在位置
+    for c_idx, col in enumerate(df_history.columns):
+        if col[1] == '日期':
+            last_cell_val = ws.cell(row=last_row_idx, column=c_idx + 1).value
+            if last_cell_val is not None:
+                if isinstance(last_cell_val, datetime):
+                    last_row_date_str = last_cell_val.strftime("%Y-%m-%d")
+                else:
+                    try:
+                        clean_str = str(last_cell_val).strip().split()[0].replace("/", "-")
+                        last_row_date_str = datetime.strptime(clean_str, "%Y-%m-%d").strftime("%Y-%m-%d")
+                    except:
+                        last_row_date_str = str(last_cell_val)
+            break
+
+    # 2. 🛡️ 【拦截器】如果网页返回的更新日期和 Excel 最后一行一模一样 -> 判定为未更新，坚决不加行！
+    standard_web_date = datetime.strptime(real_date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
+    if last_row_date_str == standard_web_date and system_today_str != last_row_date_str:
+        print(f"\n 🛑 工作表【{ws.title}】：检测到网站上依然是老数据 ({real_date_str}) -> 触发【防空跑机制】：不添加任何新行。")
+        return False # 返回 False 代表今天没有发生任何数据写入行为
+
+    # 3. 🔍 扫描 Excel，看今天系统这一行是否在下午已经生成过
     for r in range(3, ws.max_row + 1):
         for c_idx, col in enumerate(df_history.columns):
             if col[1] == '日期':
@@ -102,32 +132,36 @@ def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
                         except ValueError:
                             cell_val = str(raw_val)
 
-                    standard_real_date = datetime.strptime(real_date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
-                    if cell_val == standard_real_date:
+                    if cell_val == system_today_str:
                         target_row = r
                         break
         if target_row:
             break
 
-    if target_row is None:
-        target_row = ws.max_row + 1
-        print(f"\n 📅 工作表【{ws.title}】：将在末尾新增行 -> {real_date_str}")
+    # 4. 🔀 决定是原位更新，还是新增今日行
+    if target_row is not None:
+        print(f"\n 📅 工作表【{ws.title}】：今日下午已跑过 -> 正在执行【原位更新】，18:10 最新数据覆盖 14:40 旧数据。")
     else:
-        print(f"\n 📅 工作表【{ws.title}】：将在第 {target_row} 行原位更新数据 -> {real_date_str}")
+        target_row = ws.max_row + 1
+        print(f"\n 📅 工作表【{ws.title}】：检测到网页今日已发布新数据 -> 正在末尾【新增今日数据行】: {system_today_str}")
 
-    dt_obj = datetime.strptime(real_date_str, "%Y-%m-%d")
+    # 5. 写入今天的日期
+    dt_obj = datetime.strptime(system_today_str, "%Y-%m-%d")
     formatted_date = f"{dt_obj.year}/{dt_obj.month}/{dt_obj.day}"
 
     for c_idx, col in enumerate(df_history.columns):
         if col[1] == '日期':
             ws.cell(row=target_row, column=c_idx + 1).value = formatted_date
 
+    # 6. 填入数据
     for col_idx, value in row_data_dict.items():
         if value is not None and str(value) != 'nan':
             try:
                 ws.cell(row=target_row, column=col_idx + 1).value = float(value)
             except ValueError:
                 ws.cell(row=target_row, column=col_idx + 1).value = value
+    
+    return True # 返回 True 代表发生了有效的修改
 
 
 def main():
@@ -140,12 +174,10 @@ def main():
 
     if not matched_files:
         print(f"❌ 错误：在 {FOLDER_DIR} 下找不到名字包含【内存价格每日追踪_】的表格！")
-        input("\n按回车键退出程序...")
         return
 
-    # 按文件修改时间排序，自动锁定最新的一份文件
     current_excel = max(matched_files, key=os.path.getmtime)
-    print(f"📂 成功锁定目标文件：【{os.path.basename(current_excel)}】\n")
+    print(f"📂 成功继承历史火种，锁定目标文件：【{os.path.basename(current_excel)}】\n")
     # -------------------------------------------------- #
 
     print("🚀 [1/4] 开始同步 TrendForce 官方数据...")
@@ -153,44 +185,51 @@ def main():
         tables_dram, dram_date = get_web_data_and_date("https://www.trendforce.cn/price")
         tables_flash, flash_date = get_web_data_and_date("https://www.trendforce.cn/price/flash")
 
-        print("\n📦 [2/4] 正在进行内存数据对齐...")
+        print("\n📦 [2/4] 正在进行多级表头数据结构对齐...")
         df_dram_hist = pd.read_excel(current_excel, sheet_name='DRAM Spot Price', header=[0, 1], engine='openpyxl')
         df_flash_hist = pd.read_excel(current_excel, sheet_name='NAND Flash', header=[0, 1], engine='openpyxl')
 
         dram_row_dict = get_row_data_dict(tables_dram, df_dram_hist)
         flash_row_dict = get_row_data_dict(tables_flash, df_flash_hist)
 
-        print("💾 [3/4] 正在安全写入底层单元格...")
+        print("💾 [3/4] 正在安全注入 Excel 底层单元格...")
         wb = openpyxl.load_workbook(current_excel)
-        write_to_excel_cell(wb['DRAM Spot Price'], df_dram_hist, dram_row_dict, dram_date)
-        write_to_excel_cell(wb['NAND Flash'], df_flash_hist, flash_row_dict, flash_date)
+        
+        # 运行写入并获取是否有有效的数据修改
+        changed_dram = write_to_excel_cell(wb['DRAM Spot Price'], df_dram_hist, dram_row_dict, dram_date)
+        changed_flash = write_to_excel_cell(wb['NAND Flash'], df_flash_hist, flash_row_dict, flash_date)
+        
+        if not changed_dram and not changed_flash:
+            wb.close()
+            print("\n ☕ 【智能休眠】：由于网站上未更新任何价格数据，本次运行未做任何修改，不重命名文件。")
+            print("✨✨✨ 自动化流程提前安全退出。 ✨✨✨\n")
+            return
+
         wb.save(current_excel)
         wb.close()
 
         # ---------------- 自动化模块：修改文件名 ---------------- #
-        print("🏷️ [4/4] 正在执行智能文件重命名...")
-        today_compact = datetime.now().strftime("%Y%m%d")  # 比如 20260519
+        print("🏷️ [4/4] 正在执行智能文件升级与迭代...")
+        today_compact = datetime.now().strftime("%Y%m%d")  # 例如：20260528
         new_filename = f"内存价格每日追踪_{today_compact}.xlsx"
         new_filepath = os.path.join(FOLDER_DIR, new_filename)
 
-        # 如果当前文件名不是今天的文件名，就执行重命名
         if os.path.abspath(current_excel) != os.path.abspath(new_filepath):
             if os.path.exists(new_filepath):
-                # 如果今天的文件已存在，说明跑过第二次，直接静默覆盖替换
                 os.replace(current_excel, new_filepath)
             else:
                 os.rename(current_excel, new_filepath)
-            print(f"✅ 文件已自动换上新衣：改名为 ──> 【{new_filename}】")
+            print(f"✅ 文件已全自动进化更名为 ──> 【{new_filename}】")
         else:
-            print(f"✅ 文件名已经是今日最新 ──> 【{new_filename}】")
+            print(f"✅ 数据已在今日最新表格内完成原位热更新 ──> 【{new_filename}】")
         # -------------------------------------------------- #
 
-        print("\n✨✨✨ 全自动托管模式大功告成！今天的工作结束啦！ ✨✨✨")
+        print("\n✨✨✨ 微信/网盘全自动托管模式运行成功！历史链路无缝闭环！ ✨✨✨")
         print("==========================================================================\n")
 
     except PermissionError:
         print(f"\n❌ 写入失败！系统报错：Permission denied")
-        print(f"💡 解决办法：请关闭正在打开的 Excel 表格，然后再试一次！")
+        print(f"💡 解决办法：请关闭你电脑里正在打开的 Excel 表格，然后再运行一次！")
     except Exception as e:
         print(f"❌ 运行出错了: {e}")
 
