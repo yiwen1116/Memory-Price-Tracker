@@ -84,16 +84,16 @@ def get_row_data_dict(tables_list, df_history):
 
 
 def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
-    """【钢筋混凝土纯物理防线】：完全抛弃 Pandas 多级表头索引，用纯物理空行雷达进行定位追加，绝不误杀覆盖"""
+    """【无瑕终极对齐版】：用第一列执行物理空行雷达防误杀，定位成功后把整行所有的“日期”格子全部填满"""
     target_row = None
     system_today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. 🔍 固定死日期列在你的 Excel 中就是第一列 (A列)
-    date_col_idx = 1
+    # 1. 🔍 固定使用第一列（A列）作为整个表格的时间中轴和空行探测器
+    base_date_col_idx = 1
 
-    # 2. 🔍 用纯物理扫描全表，看看今天系统日期 (2026-05-29) 是否已经存在（满足 18:10 覆写 14:40 保持一行的去重刚需）
+    # 2. 🔍 扫描第一列，看看今天系统日期 (2026-05-29) 是否已经存在（支持 18:10 覆写 14:40）
     for r in range(3, ws.max_row + 1):
-        raw_val = ws.cell(row=r, column=date_col_idx).value
+        raw_val = ws.cell(row=r, column=base_date_col_idx).value
         if raw_val is not None:
             if isinstance(raw_val, datetime):
                 cell_val = raw_val.strftime("%Y-%m-%d")
@@ -104,30 +104,32 @@ def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
                 except:
                     cell_val = str(raw_val)
 
-            # 如果今天已经跑过一次了，直接锁定该行准备原位更新
             if cell_val == system_today_str:
                 target_row = r
                 break
 
-    # 3. 🛡️ 【核心硬修复】：如果是全新的今天，用物理空行雷达往下数，直到找到真正的空白格，绝对不相信 ws.max_row
+    # 3. 🛡️ 【物理防线】：如果是全新的一天，用雷达扫描直到找到真正的物理空白格，避开 28 号历史数据
     if target_row is None:
         check_row = 3
         while True:
-            cell_content = ws.cell(row=check_row, column=date_col_idx).value
+            cell_content = ws.cell(row=check_row, column=base_date_col_idx).value
             if cell_content is None or str(cell_content).strip() == "" or str(cell_content).strip() == "None":
                 target_row = check_row
                 break
             check_row += 1
-        print(f"\n 📅 工作表【{ws.title}】：物理防线已启动 -> 避开了所有历史行，锁定了真正的空白物理尾行: 第 {target_row} 行")
+        print(f"\n 📅 工作表【{ws.title}】：物理锁启动 -> 锁定了真正安全的空白物理尾行: 第 {target_row} 行")
     else:
-        print(f"\n 📅 工作表【{ws.title}】：今日下午已运行过 -> 正在执行【原位更新】覆盖第 {target_row} 行数据。")
+        print(f"\n 📅 工作表【{ws.title}】：今日下午已跑过 -> 正在执行【原位更新】覆盖第 {target_row} 行。")
 
-    # 4. ✍️ 统一以 YYYY/M/D 规范将今天的系统日期写入对应的“日期”单元格
+    # 4. ✍️ 【多日期列同步填满】：遍历 Pandas 多级表头结构，把这一行中所有属于“日期”的单元格全部填上时间！
     dt_obj = datetime.strptime(system_today_str, "%Y-%m-%d")
     formatted_date = f"{dt_obj.year}/{dt_obj.month}/{dt_obj.day}"
-    ws.cell(row=target_row, column=date_col_idx).value = formatted_date
 
-    # 5. 💾 安全填入抓取到的最新价格数据
+    for c_idx, col in enumerate(df_history.columns):
+        if col[1] == '日期':
+            ws.cell(row=target_row, column=c_idx + 1).value = formatted_date
+
+    # 5. 💾 填入最新抓到的各维度价格数据
     for col_idx, value in row_data_dict.items():
         if value is not None and str(value) != 'nan':
             try:
@@ -148,7 +150,6 @@ def main():
         print(f"❌ 错误：在 {FOLDER_DIR} 下找不到名字包含【内存价格每日追踪_】的表格！")
         return
 
-    # 按文件名大到小排序，确保永远锁定最新最全的那张表
     current_excel = max(matched_files)
     print(f"📂 成功锁定唯一历史火种文件：【{os.path.basename(current_excel)}】\n")
     # -------------------------------------------------- #
