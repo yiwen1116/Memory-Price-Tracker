@@ -84,16 +84,20 @@ def get_row_data_dict(tables_list, df_history):
 
 
 def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
-    """【无瑕终极对齐版】：用第一列执行物理空行雷达防误杀，定位成功后把整行所有的“日期”格子全部填满"""
+    """【Pandas刚性计算行号版】：彻底抛弃 openpyxl 测空行，用 Pandas 绝对公正的矩阵行数锁死行尾，全面粉碎环境变动 Bug"""
     target_row = None
-    system_today_str = datetime.now().strftime("%Y-%m-%d")
+    standard_web_date = datetime.strptime(real_date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
 
-    # 1. 🔍 固定使用第一列（A列）作为整个表格的时间中轴和空行探测器
+    # 1. 🔍 固定使用第一列（A列）作为时间基准中轴
     base_date_col_idx = 1
 
-    # 2. 🔍 扫描第一列，看看今天系统日期 (2026-05-29) 是否已经存在（支持 18:10 覆写 14:40）
-    for r in range(3, ws.max_row + 1):
-        raw_val = ws.cell(row=r, column=base_date_col_idx).value
+    # 2. 🔍 扫描 Excel 现有的数据行，看网页返回的这个日期（比如 2026-05-29）在表里是否已经存在
+    # 💡 这里的循环终点严格按照 Pandas 读出来的真实数据矩阵长度（len(df_history)）来算，绝不上当受骗！
+    for idx in range(len(df_history)):
+        # Excel 中的实际物理行号 = Pandas 矩阵索引 + 3 (因为前 2 行是双表头)
+        current_excel_row = idx + 3
+        raw_val = ws.cell(row=current_excel_row, column=base_date_col_idx).value
+        
         if raw_val is not None:
             if isinstance(raw_val, datetime):
                 cell_val = raw_val.strftime("%Y-%m-%d")
@@ -104,32 +108,30 @@ def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
                 except:
                     cell_val = str(raw_val)
 
-            if cell_val == system_today_str:
-                target_row = r
+            # 如果在 Excel 里找到了和网页日期完全吻合的一行
+            if cell_val == standard_web_date:
+                target_row = current_excel_row
                 break
 
-    # 3. 🛡️ 【物理防线】：如果是全新的一天，用雷达扫描直到找到真正的物理空白格，避开 28 号历史数据
-    if target_row is None:
-        check_row = 3
-        while True:
-            cell_content = ws.cell(row=check_row, column=base_date_col_idx).value
-            if cell_content is None or str(cell_content).strip() == "" or str(cell_content).strip() == "None":
-                target_row = check_row
-                break
-            check_row += 1
-        print(f"\n 📅 工作表【{ws.title}】：物理锁启动 -> 锁定了真正安全的空白物理尾行: 第 {target_row} 行")
+    # 3. 🔀 刚性判定写入与加行位置
+    if target_row is not None:
+        # 情况一：网页是29号，表里有29号。下午第二次跑或者周末空跑，直接原地刷新最新价格，绝不产生30号的多余新行
+        print(f"\n 📅 工作表【{ws.title}】：检测到数据日期 {standard_web_date} 已在表中存在 -> 执行【原位热更新】，避免多余行。")
     else:
-        print(f"\n 📅 工作表【{ws.title}】：今日下午已跑过 -> 正在执行【原位更新】覆盖第 {target_row} 行。")
+        # 情况二：网页出现了全新的开盘日期！
+        # 💡【终极刚性解】：全新空行 = Pandas 矩阵里现有的有效数据行数 + 双表头 2 行 + 1 (新的一行)
+        target_row = len(df_history) + 2 + 1
+        print(f"\n 📅 工作表【{ws.title}】：检测到全新的网页数据日期 -> 刚性计算锁启动，锁定全新空行追加: 第 {target_row} 行 ({standard_web_date})")
 
-    # 4. ✍️ 【多日期列同步填满】：遍历 Pandas 多级表头结构，把这一行中所有属于“日期”的单元格全部填上时间！
-    dt_obj = datetime.strptime(system_today_str, "%Y-%m-%d")
+    # 4. ✍️ 填满这一行中所有的“日期”单元格
+    dt_obj = datetime.strptime(standard_web_date, "%Y-%m-%d")
     formatted_date = f"{dt_obj.year}/{dt_obj.month}/{dt_obj.day}"
 
     for c_idx, col in enumerate(df_history.columns):
         if col[1] == '日期':
             ws.cell(row=target_row, column=c_idx + 1).value = formatted_date
 
-    # 5. 💾 填入最新抓到的各维度价格数据
+    # 5. 💾 写入今日抓到的各个颗粒度具体价格
     for col_idx, value in row_data_dict.items():
         if value is not None and str(value) != 'nan':
             try:
@@ -175,7 +177,7 @@ def main():
 
         # ---------------- 自动化模块：修改文件名 ---------------- #
         print("🏷️ [4/4] 正在执行智能文件升级与迭代...")
-        today_compact = datetime.now().strftime("%Y%m%d")  # 例如：20260529
+        today_compact = datetime.now().strftime("%Y%m%d")  # 例如：20260530
         new_filename = f"内存价格每日追踪_{today_compact}.xlsx"
         new_filepath = os.path.join(FOLDER_DIR, new_filename)
 
