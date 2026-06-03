@@ -12,7 +12,7 @@ FOLDER_DIR = "."
 # =======================================================
 
 def get_web_data_and_date(url):
-    """提取网页数据，统一返回 YYYY-MM-DD 用于内部定位"""
+    """提取网页数据，统一返回 YYYY-MM-DD"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -83,47 +83,48 @@ def get_row_data_dict(tables_list, df_history):
     return row_data
 
 
+def get_real_max_row(ws):
+    """
+    【终极防线】：绝对物理扫描。无视任何 Excel 缓存、幽灵边框、被破坏的维度标签。
+    只认实实在在的文字！从根本上粉碎“代码只能用一次”的覆盖 Bug！
+    """
+    max_r = 1
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value is not None and str(cell.value).strip() != "" and str(cell.value).strip().lower() != 'nan':
+                if cell.row > max_r:
+                    max_r = cell.row
+    return max_r
+
+
 def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
-    """【Pandas刚性计算行号版】：彻底抛弃 openpyxl 测空行，用 Pandas 绝对公正的矩阵行数锁死行尾，全面粉碎环境变动 Bug"""
-    target_row = None
     standard_web_date = datetime.strptime(real_date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
+    
+    # 1. 🛡️ 启动全盘物理扫描，获取绝对真实的最后一行
+    real_max = get_real_max_row(ws)
+    
+    # 2. 🔍 提取最后一行的真实日期
+    last_date_val = ws.cell(row=real_max, column=1).value
+    last_date_str = ""
+    if last_date_val:
+        if isinstance(last_date_val, datetime):
+            last_date_str = last_date_val.strftime("%Y-%m-%d")
+        else:
+            try:
+                clean_str = str(last_date_val).strip().split()[0].replace("/", "-")
+                last_date_str = datetime.strptime(clean_str, "%Y-%m-%d").strftime("%Y-%m-%d")
+            except:
+                last_date_str = str(last_date_val)
 
-    # 1. 🔍 固定使用第一列（A列）作为时间基准中轴
-    base_date_col_idx = 1
-
-    # 2. 🔍 扫描 Excel 现有的数据行，看网页返回的这个日期（比如 2026-05-29）在表里是否已经存在
-    # 💡 这里的循环终点严格按照 Pandas 读出来的真实数据矩阵长度（len(df_history)）来算，绝不上当受骗！
-    for idx in range(len(df_history)):
-        # Excel 中的实际物理行号 = Pandas 矩阵索引 + 3 (因为前 2 行是双表头)
-        current_excel_row = idx + 3
-        raw_val = ws.cell(row=current_excel_row, column=base_date_col_idx).value
-        
-        if raw_val is not None:
-            if isinstance(raw_val, datetime):
-                cell_val = raw_val.strftime("%Y-%m-%d")
-            else:
-                try:
-                    clean_str = str(raw_val).strip().split()[0].replace("/", "-")
-                    cell_val = datetime.strptime(clean_str, "%Y-%m-%d").strftime("%Y-%m-%d")
-                except:
-                    cell_val = str(raw_val)
-
-            # 如果在 Excel 里找到了和网页日期完全吻合的一行
-            if cell_val == standard_web_date:
-                target_row = current_excel_row
-                break
-
-    # 3. 🔀 刚性判定写入与加行位置
-    if target_row is not None:
-        # 情况一：网页是29号，表里有29号。下午第二次跑或者周末空跑，直接原地刷新最新价格，绝不产生30号的多余新行
-        print(f"\n 📅 工作表【{ws.title}】：检测到数据日期 {standard_web_date} 已在表中存在 -> 执行【原位热更新】，避免多余行。")
+    # 3. 🔀 刚性判定写入行
+    if last_date_str == standard_web_date:
+        print(f"\n 📅 工作表【{ws.title}】：检测到网页日期 ({standard_web_date}) 与最后一行相同 -> 执行【原位热更新】，覆盖第 {real_max} 行。")
+        target_row = real_max
     else:
-        # 情况二：网页出现了全新的开盘日期！
-        # 💡【终极刚性解】：全新空行 = Pandas 矩阵里现有的有效数据行数 + 双表头 2 行 + 1 (新的一行)
-        target_row = len(df_history) + 2 + 1
-        print(f"\n 📅 工作表【{ws.title}】：检测到全新的网页数据日期 -> 刚性计算锁启动，锁定全新空行追加: 第 {target_row} 行 ({standard_web_date})")
+        target_row = real_max + 1
+        print(f"\n 📅 工作表【{ws.title}】：检测到全新开盘日期 ({standard_web_date}) -> 全视之眼锁定安全空位，追加至第 {target_row} 行。")
 
-    # 4. ✍️ 填满这一行中所有的“日期”单元格
+    # 4. ✍️ 横向填满所有属于“日期”的单元格
     dt_obj = datetime.strptime(standard_web_date, "%Y-%m-%d")
     formatted_date = f"{dt_obj.year}/{dt_obj.month}/{dt_obj.day}"
 
@@ -131,13 +132,15 @@ def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
         if col[1] == '日期':
             ws.cell(row=target_row, column=c_idx + 1).value = formatted_date
 
-    # 5. 💾 写入今日抓到的各个颗粒度具体价格
+    # 5. 💾 写入各维度的具体价格
     for col_idx, value in row_data_dict.items():
         if value is not None and str(value) != 'nan':
             try:
                 ws.cell(row=target_row, column=col_idx + 1).value = float(value)
             except ValueError:
                 ws.cell(row=target_row, column=col_idx + 1).value = value
+
+    return True
 
 
 def main():
@@ -177,7 +180,7 @@ def main():
 
         # ---------------- 自动化模块：修改文件名 ---------------- #
         print("🏷️ [4/4] 正在执行智能文件升级与迭代...")
-        today_compact = datetime.now().strftime("%Y%m%d")  # 例如：20260530
+        today_compact = datetime.now().strftime("%Y%m%d")  
         new_filename = f"内存价格每日追踪_{today_compact}.xlsx"
         new_filepath = os.path.join(FOLDER_DIR, new_filename)
 
