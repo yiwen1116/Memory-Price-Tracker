@@ -84,10 +84,7 @@ def get_row_data_dict(tables_list, df_history):
 
 
 def get_real_max_row(ws):
-    """
-    【终极防线】：绝对物理扫描。无视任何 Excel 缓存、幽灵边框、被破坏的维度标签。
-    只认实实在在的文字！从根本上粉碎“代码只能用一次”的覆盖 Bug！
-    """
+    """【绝对物理防线】：像眼睛一样扫描每个格子，无视任何缓存Bug和假死行号"""
     max_r = 1
     for row in ws.iter_rows():
         for cell in row:
@@ -98,6 +95,7 @@ def get_real_max_row(ws):
 
 
 def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
+    """精准定位行号，同日覆写，跨日追加，杜绝周末无限加行"""
     standard_web_date = datetime.strptime(real_date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
     
     # 1. 🛡️ 启动全盘物理扫描，获取绝对真实的最后一行
@@ -118,7 +116,7 @@ def write_to_excel_cell(ws, df_history, row_data_dict, real_date_str):
 
     # 3. 🔀 刚性判定写入行
     if last_date_str == standard_web_date:
-        print(f"\n 📅 工作表【{ws.title}】：检测到网页日期 ({standard_web_date}) 与最后一行相同 -> 执行【原位热更新】，覆盖第 {real_max} 行。")
+        print(f"\n 📅 工作表【{ws.title}】：网页更新时间 ({standard_web_date}) 未变 -> 执行【原位热更新】，覆盖第 {real_max} 行防重复。")
         target_row = real_max
     else:
         target_row = real_max + 1
@@ -148,13 +146,17 @@ def main():
 
     # ---------------- 自动化模块：寻找文件 ---------------- #
     print("🔍 [0/4] 自动雷达：正在定位本地最新的 Excel 追踪表...")
-    search_pattern = os.path.join(FOLDER_DIR, "内存价格每日追踪_*.xlsx")
-    matched_files = glob.glob(search_pattern)
+    
+    # 💡 放宽搜索条件，抓取根目录下所有的 xlsx，但排除打开时的临时文件
+    search_pattern = os.path.join(FOLDER_DIR, "*.xlsx")
+    matched_files = [f for f in glob.glob(search_pattern) if not os.path.basename(f).startswith('~')]
 
     if not matched_files:
-        print(f"❌ 错误：在 {FOLDER_DIR} 下找不到名字包含【内存价格每日追踪_】的表格！")
+        print(f"❌ 错误：在 {FOLDER_DIR} 下找不到任何 Excel 表格！")
         return
 
+    # 💡 永远锁定文件名排在最后面（也就是最新的）文件。
+    # 比如 "内存价格每日追踪_20260530.xlsx" 绝对大于 "000000_历史基底数据.xlsx"
     current_excel = max(matched_files)
     print(f"📂 成功锁定唯一历史火种文件：【{os.path.basename(current_excel)}】\n")
     # -------------------------------------------------- #
@@ -198,7 +200,7 @@ def main():
         print("==========================================================================\n")
 
     except PermissionError:
-        print(f"\n❌ 写入失败！系统报错：Permission denied")
+        print(f"\n❌ 写入失败！系统报错：Permission denied。请确认表格没有被打开！")
     except Exception as e:
         print(f"❌ 运行出错了: {e}")
 
