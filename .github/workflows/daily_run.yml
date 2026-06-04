@@ -26,10 +26,12 @@ jobs:
       - name: 安装 Python 库
         run: pip install -r requirements.txt
 
-      # 4. 📥 从网盘下载上一次保存的 Excel 总表
+     # 4. 📥 从网盘下载上一次保存的 Excel 总表（使用神级跨时空插件）
       - name: 下载历史 Excel 备份
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
+          github_token: ${{secrets.GITHUB_TOKEN}}
+          branch: main
           name: memory-price-database
           path: .
         continue-on-error: true
