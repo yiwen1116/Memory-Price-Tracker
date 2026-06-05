@@ -31,7 +31,6 @@ jobs:
         uses: dawidd6/action-download-artifact@v3
         with:
           github_token: ${{secrets.GITHUB_TOKEN}}
-          branch: main
           name: memory-price-database
           path: .
         continue-on-error: true
