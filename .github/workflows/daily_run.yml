@@ -43,7 +43,7 @@ jobs:
       - name: 推送 Excel 文件到企业微信
         run: |
           # 🔍 定位刚刚生成的、包含完整历史数据的最新 Excel 路径
-          FILE_PATH=$(find . -maxdepth 1 -name "*.xlsx" | head -n 1)
+          FILE_PATH=$(find . -maxdepth 1 -name "内存价格每日追踪_*.xlsx" | head -n 1)
           echo "📂 正在打包发送最新文件: $FILE_PATH"
           
           # 1️⃣ 将本地 Excel 文件上传到企业微信服务器，获取临时媒体文件 media_id
@@ -67,5 +67,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: memory-price-database
-          path: "*.xlsx"
+          path: "内存价格每日追踪_*.xlsx"
           retention-days: 7
