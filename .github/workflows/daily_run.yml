@@ -3,7 +3,7 @@ name: 自动更新 TrendForce 内存价格
 on:
   schedule:
     # 🔔 多重闹钟轰炸，确保今天的数据百分之百落袋
-    - cron: '30 8 * * *'  # 北京时间 16:00
+    - cron: '50 9 * * *'  # 北京时间 16:00
 
   workflow_dispatch: 
 
