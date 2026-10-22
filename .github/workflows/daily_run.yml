@@ -69,19 +69,3 @@ jobs:
           name: memory-price-database
           path: "内存价格每日追踪_*.xlsx"
           retention-days: 7
-      # (紧接在你原来的步骤 7 下面追加)
-      
-      # 8. 📊 运行看板生成脚本
-      - name: 生成静态可视化 HTML
-        run: python generate_dashboard.py
-
-      # 9. 🌐 部署静态页面到 GitHub Pages
-      - name: 部署到 gh-pages 分支
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          publish_branch: gh-pages
-          # 只推送前端页面，保持分支干净
-          keep_files: false
-          exclude_assets: '*.xlsx,*.py,*.txt,*.yml'
